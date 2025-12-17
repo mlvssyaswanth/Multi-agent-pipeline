@@ -194,7 +194,14 @@ CRITICAL:
                         continue
                     raise ValueError("Agent returned None response after retries. This may be due to API rate limiting or model unavailability.")
                 
-                code = response.get("content", "") if isinstance(response, dict) else str(response)
+                # Extract content from response - handle different response formats
+                if isinstance(response, dict):
+                    code = response.get("content", "") or response.get("text", "") or str(response)
+                else:
+                    code = str(response)
+                
+                # Log response length for debugging
+                logger.debug(f"CodingAgent: Received response length: {len(code)} characters")
                 
                 if not code or not code.strip():
                     if attempt < max_retries - 1:
@@ -220,9 +227,21 @@ CRITICAL:
             raise ValueError(error_msg)
         
         # Extract code blocks from the response
-        code = self._extract_code_blocks(code)
+        extracted_code = self._extract_code_blocks(code)
         
-        return code
+        # Log extraction results for debugging
+        logger.debug(f"CodingAgent: Extracted code length: {len(extracted_code)} characters (original: {len(code)})")
+        
+        # Safety check: if extraction seems incomplete, try to use more of the original content
+        if len(extracted_code) < len(code) * 0.3 and len(code) > 200:
+            # If extracted code is very short compared to original, extraction might have failed
+            logger.warning(f"CodingAgent: Extracted code ({len(extracted_code)} chars) is much shorter than original ({len(code)} chars). Using full content as fallback.")
+            # Check if original content looks like code (has Python keywords)
+            if any(keyword in code for keyword in ['def ', 'class ', 'import ', 'from ', '# File:']):
+                # Use original content if it looks like code
+                return code.strip()
+        
+        return extracted_code if extracted_code else code.strip()
     
     def _format_requirements(self, requirements: Dict[str, Any]) -> str:
         """Format requirements dictionary into readable text."""
@@ -245,14 +264,53 @@ CRITICAL:
         return text
     
     def _extract_code_blocks(self, content: str) -> str:
-        """Extract Python code from markdown code blocks."""
-        if "```python" in content:
-            start = content.find("```python") + 9
-            end = content.find("```", start)
-            return content[start:end].strip()
-        elif "```" in content:
-            start = content.find("```") + 3
-            end = content.find("```", start)
-            return content[start:end].strip()
+        """
+        Extract Python code from markdown code blocks.
+        Handles multiple code blocks and incomplete responses.
+        """
+        if not content:
+            return ""
+        
+        # Try to find all code blocks
+        code_blocks = []
+        
+        # Pattern 1: Look for ```python blocks
+        python_block_pattern = r'```python\s*\n(.*?)(?:```|$)'
+        import re
+        python_matches = re.finditer(python_block_pattern, content, re.DOTALL)
+        for match in python_matches:
+            code = match.group(1).strip()
+            if code:
+                code_blocks.append(code)
+        
+        # Pattern 2: If no python blocks, look for generic ``` blocks
+        if not code_blocks:
+            generic_block_pattern = r'```(?:[a-z]+)?\s*\n(.*?)(?:```|$)'
+            generic_matches = re.finditer(generic_block_pattern, content, re.DOTALL)
+            for match in generic_matches:
+                code = match.group(1).strip()
+                if code:
+                    code_blocks.append(code)
+        
+        # Pattern 3: If still no blocks found, check if content looks like code
+        if not code_blocks:
+            # Check if content starts with common Python keywords or imports
+            lines = content.strip().split('\n')
+            if lines and (lines[0].startswith('import ') or 
+                         lines[0].startswith('from ') or
+                         lines[0].startswith('def ') or
+                         lines[0].startswith('class ') or
+                         lines[0].startswith('#') or
+                         any(line.strip().startswith(('def ', 'class ', 'import ', 'from ')) for line in lines[:5])):
+                # Likely code without markdown blocks - return as is
+                return content.strip()
+        
+        # Combine all code blocks (for multiple files scenario)
+        if code_blocks:
+            # If multiple blocks, join them with file markers if they look like separate files
+            combined = '\n\n'.join(code_blocks)
+            return combined
+        
+        # Fallback: return original content if no code blocks found
         return content.strip()
 

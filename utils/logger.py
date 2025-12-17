@@ -52,19 +52,9 @@ def setup_logging(
         log_path = Path(log_file_path)
         log_path.parent.mkdir(parents=True, exist_ok=True)
     
-    # Create formatter
-    if include_context:
-        format_string = (
-            '%(asctime)s | %(levelname)-8s | %(name)-20s | '
-            '%(funcName)-15s:%(lineno)-4d | %(message)s'
-        )
-    else:
-        format_string = '%(asctime)s | %(levelname)-8s | %(name)-20s | %(message)s'
-    
-    if include_timestamp:
-        date_format = '%Y-%m-%d %H:%M:%S'
-    else:
-        date_format = '%H:%M:%S'
+    # Create formatter - minimalistic format
+    format_string = '%(asctime)s | %(levelname)-8s | %(message)s'
+    date_format = '%H:%M:%S'
     
     formatter = logging.Formatter(format_string, datefmt=date_format)
     
@@ -129,19 +119,15 @@ class PerformanceLogger:
     
     def __enter__(self):
         self.start_time = datetime.now()
-        self.logger.log(
-            self.log_level,
-            f"⏱️  Starting: {self.operation_name}"
-        )
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self.start_time:
             duration = (datetime.now() - self.start_time).total_seconds()
-            status = "✅" if exc_type is None else "❌"
+            status = "Completed" if exc_type is None else "Failed"
             self.logger.log(
                 self.log_level,
-                f"{status} Completed: {self.operation_name} | Duration: {duration:.2f}s"
+                f"{self.operation_name}: {status} ({duration:.2f}s)"
             )
         return False  # Don't suppress exceptions
 
@@ -157,11 +143,8 @@ def log_api_call(logger, agent_name, model, prompt_length, response_length=None)
         prompt_length: Length of the prompt
         response_length: Length of the response (if available)
     """
-    logger.debug(
-        f"📡 API Call | Agent: {agent_name} | Model: {model} | "
-        f"Prompt: {prompt_length} chars" + 
-        (f" | Response: {response_length} chars" if response_length else "")
-    )
+    # Minimal logging - only log if needed for debugging
+    pass  # Removed verbose API call logging
 
 
 def log_agent_activity(logger, agent_name, activity, details=None):
@@ -174,9 +157,6 @@ def log_agent_activity(logger, agent_name, activity, details=None):
         activity: Description of the activity
         details: Additional details (dict)
     """
-    message = f"🤖 {agent_name} | {activity}"
-    if details:
-        detail_str = " | ".join([f"{k}: {v}" for k, v in details.items()])
-        message += f" | {detail_str}"
-    logger.info(message)
+    # Minimal logging - only log activity name
+    logger.info(f"{agent_name}: {activity}")
 

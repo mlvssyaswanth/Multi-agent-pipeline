@@ -34,10 +34,22 @@ You must output a JSON object with the following structure:
     "non_functional_requirements": ["list of non-functional requirements (performance, security, usability, etc.)"],
     "assumptions": ["list of assumptions made when requirements are vague"],
     "constraints": ["list of constraints identified (technical, business, time, etc.)"],
-    "clarifying_questions": ["list of questions to resolve ambiguity - even if simulated"],
+    "clarifying_questions": [
+        {
+            "question": "the clarifying question text",
+            "assumption": "the assumption made to proceed without clarification",
+            "code": "code snippet or example showing how this assumption is implemented"
+        }
+    ],
     "ambiguity_detected": true/false,
     "ambiguity_notes": "description of detected ambiguities and how they were resolved"
 }
+
+IMPORTANT FOR CLARIFYING QUESTIONS:
+- Each clarifying question must be an object with "question", "assumption", and "code" fields
+- The "assumption" field should explain what assumption was made to proceed
+- The "code" field should contain a relevant code snippet or example showing how the assumption is implemented
+- If no code is applicable, use a comment explaining the assumption instead
 
 AMBIGUITY DETECTION:
 Look for:
@@ -124,13 +136,22 @@ Provide your analysis as a JSON object with this exact structure:
     "non_functional_requirements": ["non-functional requirements (performance, security, usability, scalability, etc.)"],
     "assumptions": ["assumptions made when requirements are vague or incomplete"],
     "constraints": ["constraints identified (technical, business, time, platform, etc.)"],
-    "clarifying_questions": ["specific questions to resolve ambiguity - generate even if simulated"],
+    "clarifying_questions": [
+        {{
+            "question": "the clarifying question text",
+            "assumption": "the assumption made to proceed without clarification",
+            "code": "code snippet or example showing how this assumption is implemented"
+        }}
+    ],
     "ambiguity_detected": true/false,
     "ambiguity_notes": "description of detected ambiguities and how assumptions were made to resolve them"
 }}
 
 IMPORTANT:
 - If ambiguity is detected, generate clarifying questions AND make reasonable assumptions
+- Each clarifying question MUST be an object with "question", "assumption", and "code" fields
+- The "assumption" field should explain what assumption was made to proceed with this question
+- The "code" field should contain a relevant code snippet, example, or comment showing how the assumption is implemented
 - Document all assumptions clearly
 - Ensure functional requirements are specific and testable
 - Include non-functional requirements even if not explicitly mentioned (make reasonable assumptions)
@@ -138,15 +159,50 @@ IMPORTANT:
         
         log_api_call(logger, "RequirementAnalysisAgent", Config.MODEL, len(prompt))
         
-        response = self.agent.generate_reply(
-            messages=[{"role": "user", "content": prompt}]
-        )
+        import time
+        max_retries = 3
+        content = None
+        last_error = None
         
-        if response is None:
-            logger.error("Agent returned None response")
-            raise ValueError("Agent returned None response. Check API key and model configuration.")
+        for attempt in range(max_retries):
+            try:
+                response = self.agent.generate_reply(
+                    messages=[{"role": "user", "content": prompt}]
+                )
+                
+                if response is None:
+                    if attempt < max_retries - 1:
+                        wait_time = 2 ** attempt
+                        time.sleep(wait_time)
+                        continue
+                    logger.error("Agent returned None response after retries")
+                    raise ValueError("Agent returned None response after retries. This may be due to API rate limiting or model unavailability.")
+                
+                content = response.get("content", "") if isinstance(response, dict) else str(response)
+                
+                if not content or not content.strip():
+                    if attempt < max_retries - 1:
+                        wait_time = 2 ** attempt
+                        time.sleep(wait_time)
+                        continue
+                    raise ValueError("Agent returned empty content after retries.")
+                
+                break  # Success, exit retry loop
+                
+            except Exception as e:
+                last_error = e
+                if attempt < max_retries - 1:
+                    wait_time = 2 ** attempt
+                    time.sleep(wait_time)
+                    continue
+                raise ValueError(f"Requirement analysis API call failed after {max_retries} attempts: {str(e)}. Check API key, model configuration, and network connection.")
         
-        content = response.get("content", "") if isinstance(response, dict) else str(response)
+        if not content:
+            error_msg = f"Failed to analyze requirements after {max_retries} attempts"
+            if last_error:
+                error_msg += f": {str(last_error)}"
+            raise ValueError(error_msg)
+        
         log_api_call(logger, "RequirementAnalysisAgent", Config.MODEL, len(prompt), len(content))
         
         try:
@@ -162,12 +218,32 @@ IMPORTANT:
             requirements = self._parse_fallback(content)
         
         # Ensure all required fields are present
+        # Handle both old format (list of strings) and new format (list of objects)
+        clarifying_questions_raw = requirements.get("clarifying_questions", [])
+        clarifying_questions = []
+        
+        for q in clarifying_questions_raw:
+            if isinstance(q, dict):
+                # New format with question, assumption, code
+                clarifying_questions.append({
+                    "question": q.get("question", ""),
+                    "assumption": q.get("assumption", ""),
+                    "code": q.get("code", "")
+                })
+            elif isinstance(q, str):
+                # Old format - convert to new format
+                clarifying_questions.append({
+                    "question": q,
+                    "assumption": "Assumption not specified",
+                    "code": "# No code example provided"
+                })
+        
         result = {
             "functional_requirements": requirements.get("functional_requirements", []),
             "non_functional_requirements": requirements.get("non_functional_requirements", []),
             "assumptions": requirements.get("assumptions", []),
             "constraints": requirements.get("constraints", []),
-            "clarifying_questions": requirements.get("clarifying_questions", []),
+            "clarifying_questions": clarifying_questions,
             "ambiguity_detected": requirements.get("ambiguity_detected", False),
             "ambiguity_notes": requirements.get("ambiguity_notes", ""),
         }
@@ -223,7 +299,13 @@ IMPORTANT:
             "non_functional_requirements": [],
             "assumptions": ["Could not parse structured requirements - using raw input"],
             "constraints": [],
-            "clarifying_questions": [],
+            "clarifying_questions": [
+                {
+                    "question": "Could not parse structured requirements",
+                    "assumption": "Using raw input as requirement",
+                    "code": "# JSON parsing failed - requirements may be incomplete"
+                }
+            ],
             "ambiguity_detected": True,
             "ambiguity_notes": "JSON parsing failed - requirements may be incomplete",
         }
