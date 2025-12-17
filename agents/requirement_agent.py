@@ -34,6 +34,7 @@ You must output a JSON object with the following structure:
     "non_functional_requirements": ["list of non-functional requirements (performance, security, usability, etc.)"],
     "assumptions": ["list of assumptions made when requirements are vague"],
     "constraints": ["list of constraints identified (technical, business, time, etc.)"],
+    "programming_language": "detected programming language (e.g., 'python', 'javascript', 'java', 'cpp', 'go', 'rust', etc.) or 'python' if not specified",
     "clarifying_questions": [
         {
             "question": "the clarifying question text",
@@ -44,6 +45,14 @@ You must output a JSON object with the following structure:
     "ambiguity_detected": true/false,
     "ambiguity_notes": "description of detected ambiguities and how they were resolved"
 }
+
+IMPORTANT FOR LANGUAGE DETECTION:
+- Detect the programming language from the user input
+- Look for explicit mentions: "in Python", "using JavaScript", "Java code", "C++", etc.
+- Look for language-specific terms: "npm" (JavaScript), "pip" (Python), "package.json" (JavaScript), "pom.xml" (Java), etc.
+- Look for file extensions mentioned: ".js", ".py", ".java", ".cpp", ".go", ".rs", etc.
+- If no language is specified, default to "python"
+- Common languages: python, javascript, typescript, java, cpp, csharp, go, rust, ruby, php, swift, kotlin
 
 IMPORTANT FOR CLARIFYING QUESTIONS:
 - Each clarifying question must be an object with "question", "assumption", and "code" fields
@@ -136,6 +145,7 @@ Provide your analysis as a JSON object with this exact structure:
     "non_functional_requirements": ["non-functional requirements (performance, security, usability, scalability, etc.)"],
     "assumptions": ["assumptions made when requirements are vague or incomplete"],
     "constraints": ["constraints identified (technical, business, time, platform, etc.)"],
+    "programming_language": "detected programming language (e.g., 'python', 'javascript', 'java', 'cpp', 'go', 'rust', etc.) or 'python' if not specified",
     "clarifying_questions": [
         {{
             "question": "the clarifying question text",
@@ -146,6 +156,14 @@ Provide your analysis as a JSON object with this exact structure:
     "ambiguity_detected": true/false,
     "ambiguity_notes": "description of detected ambiguities and how assumptions were made to resolve them"
 }}
+
+IMPORTANT FOR LANGUAGE DETECTION:
+- Detect the programming language from the user input
+- Look for explicit mentions: "in Python", "using JavaScript", "Java code", "C++", etc.
+- Look for language-specific terms: "npm" (JavaScript), "pip" (Python), "package.json" (JavaScript), "pom.xml" (Java), etc.
+- Look for file extensions mentioned: ".js", ".py", ".java", ".cpp", ".go", ".rs", etc.
+- If no language is specified, default to "python"
+- Common languages: python, javascript, typescript, java, cpp, csharp, go, rust, ruby, php, swift, kotlin
 
 IMPORTANT:
 - If ambiguity is detected, generate clarifying questions AND make reasonable assumptions
@@ -238,11 +256,29 @@ IMPORTANT:
                     "code": "# No code example provided"
                 })
         
+        # Detect programming language from user input if not in requirements
+        detected_language = requirements.get("programming_language", "")
+        if not detected_language:
+            detected_language = self._detect_programming_language(user_input)
+        else:
+            # Normalize the language from requirements
+            detected_language = detected_language.lower()
+        
+        # Double-check: If user mentions React but language is JavaScript, upgrade to React
+        user_lower = user_input.lower()
+        if detected_language == "javascript" and any(term in user_lower for term in ["react", "jsx", "reactjs", "react.js"]):
+            detected_language = "react"
+            logger.info("Upgraded JavaScript to React based on user input")
+        
+        # Final language (use detected if requirements didn't have it)
+        final_language = detected_language.lower() if detected_language else "python"
+        
         result = {
             "functional_requirements": requirements.get("functional_requirements", []),
             "non_functional_requirements": requirements.get("non_functional_requirements", []),
             "assumptions": requirements.get("assumptions", []),
             "constraints": requirements.get("constraints", []),
+            "programming_language": final_language,
             "clarifying_questions": clarifying_questions,
             "ambiguity_detected": requirements.get("ambiguity_detected", False),
             "ambiguity_notes": requirements.get("ambiguity_notes", ""),
@@ -250,6 +286,8 @@ IMPORTANT:
         
         if result["ambiguity_detected"]:
             logger.info(f"Ambiguity detected, {len(result['clarifying_questions'])} questions generated")
+        
+        logger.info(f"Detected programming language: {final_language}")
         
         return result
     
@@ -292,6 +330,123 @@ IMPORTANT:
             "input_length": len(user_input),
         }
     
+    def _detect_programming_language(self, user_input: str) -> str:
+        """
+        Detect programming language from user input.
+        
+        Args:
+            user_input: Natural language requirement
+            
+        Returns:
+            Detected programming language (defaults to 'python')
+        """
+        user_lower = user_input.lower()
+        
+        # Language detection patterns
+        language_patterns = {
+            "python": [
+                r'\bpython\b',
+                r'\.py\b',
+                r'\bpip\b',
+                r'\bpyinstaller\b',
+                r'\bdjango\b',
+                r'\bflask\b',
+                r'\bpytest\b',
+            ],
+            "react": [
+                r'\breact\b',
+                r'\bjsx\b',
+                r'\.jsx\b',
+                r'\.tsx\b',
+                r'\breactjs\b',
+                r'\breact\.js\b',
+                r'\bcreate-react-app\b',
+                r'\bnext\.js\b',
+                r'\bgatsby\b',
+            ],
+            "javascript": [
+                r'\bjavascript\b',
+                r'\bjs\b',
+                r'\.js\b',
+                r'\bnpm\b',
+                r'\bnode\.js\b',
+                r'\bnodejs\b',
+                r'\bpackage\.json\b',
+                r'\bexpress\b',
+            ],
+            "typescript": [
+                r'\btypescript\b',
+                r'\bts\b',
+                r'\.ts\b',
+                r'\.tsx\b',
+            ],
+            "java": [
+                r'\bjava\b',
+                r'\.java\b',
+                r'\bmaven\b',
+                r'\bpom\.xml\b',
+                r'\bgradle\b',
+                r'\bspring\b',
+            ],
+            "cpp": [
+                r'\bc\+\+\b',
+                r'\bcpp\b',
+                r'\.cpp\b',
+                r'\.hpp\b',
+                r'\bcmake\b',
+            ],
+            "csharp": [
+                r'\bc#\b',
+                r'\bcsharp\b',
+                r'\.cs\b',
+                r'\.net\b',
+            ],
+            "go": [
+                r'\bgo\b',
+                r'\bgolang\b',
+                r'\.go\b',
+                r'\bgo\.mod\b',
+            ],
+            "rust": [
+                r'\brust\b',
+                r'\.rs\b',
+                r'\bcargo\b',
+            ],
+            "ruby": [
+                r'\bruby\b',
+                r'\.rb\b',
+                r'\bgemfile\b',
+                r'\brails\b',
+            ],
+            "php": [
+                r'\bphp\b',
+                r'\.php\b',
+                r'\bcomposer\b',
+            ],
+            "swift": [
+                r'\bswift\b',
+                r'\.swift\b',
+            ],
+            "kotlin": [
+                r'\bkotlin\b',
+                r'\.kt\b',
+            ],
+        }
+        
+        # Check for explicit language mentions first
+        # Priority order: React first (since it's a subset of JavaScript), then others
+        priority_order = ["react", "typescript", "javascript"] + [lang for lang in language_patterns.keys() if lang not in ["react", "typescript", "javascript"]]
+        
+        for lang in priority_order:
+            if lang in language_patterns:
+                patterns = language_patterns[lang]
+                for pattern in patterns:
+                    if re.search(pattern, user_lower):
+                        return lang
+        
+        # Default to Python if no language detected
+        return "python"
+    
     def _parse_fallback(self, content: str) -> Dict[str, Any]:
         """Fallback parser if JSON extraction fails."""
         return {
@@ -299,6 +454,7 @@ IMPORTANT:
             "non_functional_requirements": [],
             "assumptions": ["Could not parse structured requirements - using raw input"],
             "constraints": [],
+            "programming_language": "python",  # Default to Python
             "clarifying_questions": [
                 {
                     "question": "Could not parse structured requirements",

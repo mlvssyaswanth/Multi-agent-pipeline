@@ -366,21 +366,127 @@ def display_requirements(results: dict):
             st.info("No constraints identified")
 
 
-def _parse_multiple_files(code: str) -> list:
+def _get_language_from_filename(filename: str) -> str:
+    """
+    Determine programming language from file extension.
+    
+    Args:
+        filename: File name with extension
+        
+    Returns:
+        Language identifier for syntax highlighting
+    """
+    ext = filename.lower().split('.')[-1] if '.' in filename else ''
+    
+    language_map = {
+        'py': 'python',
+        'js': 'javascript',
+        'jsx': 'javascript',  # JSX files use JavaScript syntax highlighting
+        'ts': 'typescript',
+        'tsx': 'typescript',
+        'java': 'java',
+        'cpp': 'cpp',
+        'cc': 'cpp',
+        'cxx': 'cpp',
+        'c': 'c',
+        'cs': 'csharp',
+        'go': 'go',
+        'rs': 'rust',
+        'rb': 'ruby',
+        'php': 'php',
+        'swift': 'swift',
+        'kt': 'kotlin',
+        'html': 'html',
+        'css': 'css',
+        'json': 'json',
+        'xml': 'xml',
+        'sql': 'sql',
+        'sh': 'bash',
+        'bash': 'bash',
+    }
+    
+    return language_map.get(ext, 'python')  # Default to Python
+
+
+def _get_mime_type_from_filename(filename: str) -> str:
+    """
+    Get MIME type from file extension.
+    
+    Args:
+        filename: File name with extension
+        
+    Returns:
+        MIME type string
+    """
+    ext = filename.lower().split('.')[-1] if '.' in filename else ''
+    
+    mime_map = {
+        'py': 'text/x-python',
+        'js': 'text/javascript',
+        'ts': 'text/typescript',
+        'tsx': 'text/typescript',
+        'java': 'text/x-java',
+        'cpp': 'text/x-c++',
+        'cc': 'text/x-c++',
+        'cxx': 'text/x-c++',
+        'c': 'text/x-c',
+        'cs': 'text/x-csharp',
+        'go': 'text/x-go',
+        'rs': 'text/x-rust',
+        'rb': 'text/x-ruby',
+        'php': 'text/x-php',
+        'swift': 'text/x-swift',
+        'kt': 'text/x-kotlin',
+        'html': 'text/html',
+        'css': 'text/css',
+        'json': 'application/json',
+        'xml': 'application/xml',
+        'sql': 'text/x-sql',
+        'sh': 'text/x-shellscript',
+        'bash': 'text/x-shellscript',
+    }
+    
+    return mime_map.get(ext, 'text/plain')
+
+
+def _parse_multiple_files(code: str, language: str = "python") -> list:
     """
     Parse code string to detect multiple files.
     Looks for patterns like:
-    - # File: filename.py
-    - ## File: filename.py
-    - ## filename.py
-    - # filename.py
+    - # File: filename.ext
+    - ## File: filename.ext
+    - ## filename.ext
+    - # filename.ext
     
-    Returns a list of dicts with 'filename' and 'content' keys.
+    Args:
+        code: Code string to parse
+        language: Programming language (default: "python") - used for default filename if no files detected
+    
+    Returns:
+        List of dicts with 'filename' and 'content' keys.
     """
     import re
     
     if not code or not code.strip():
-        return [{"filename": "generated_code.py", "content": code}]
+        # Use appropriate extension based on language
+        ext_map = {
+            "python": "py",
+            "javascript": "js",
+            "react": "jsx",  # React uses JSX extension
+            "typescript": "ts",
+            "java": "java",
+            "cpp": "cpp",
+            "c": "c",
+            "csharp": "cs",
+            "go": "go",
+            "rust": "rs",
+            "ruby": "rb",
+            "php": "php",
+            "swift": "swift",
+            "kotlin": "kt",
+        }
+        ext = ext_map.get(language.lower(), "py")
+        return [{"filename": f"generated_code.{ext}", "content": code}]
     
     files = []
     
@@ -390,8 +496,8 @@ def _parse_multiple_files(code: str) -> list:
     # Find all file markers with their positions
     file_markers = []
     
-    # Pattern 1: "# File: filename.py" or "# File:filename.py"
-    pattern1 = r'^#\s*File:\s*([^\n]+\.py)\s*$'
+    # Pattern 1: "# File: filename.ext" or "# File:filename.ext" (supports any extension)
+    pattern1 = r'^#\s*File:\s*([^\n]+\.[a-zA-Z0-9]+)\s*$'
     for match in re.finditer(pattern1, code, re.MULTILINE):
         file_markers.append({
             'pos': match.start(),
@@ -399,9 +505,9 @@ def _parse_multiple_files(code: str) -> list:
             'line_end': match.end()
         })
     
-    # Pattern 2: "## File: filename.py" or "## filename.py" or "# filename.py"
+    # Pattern 2: "## File: filename.ext" or "## filename.ext" or "# filename.ext" (supports any extension)
     if not file_markers:
-        pattern2 = r'^#+\s*(?:File:\s*)?([^\n]+\.py)\s*$'
+        pattern2 = r'^#+\s*(?:File:\s*)?([^\n]+\.[a-zA-Z0-9]+)\s*$'
         for match in re.finditer(pattern2, code, re.MULTILINE):
             file_markers.append({
                 'pos': match.start(),
@@ -451,8 +557,8 @@ def _parse_multiple_files(code: str) -> list:
         current_content = []
         
         for line in lines:
-            # Check for file markers at line start
-            file_match = re.match(r'^#+\s*(?:File:\s*)?([^\s:]+\.py)\s*$', line.strip())
+            # Check for file markers at line start (supports any file extension)
+            file_match = re.match(r'^#+\s*(?:File:\s*)?([^\s:]+\.[a-zA-Z0-9]+)\s*$', line.strip())
             if file_match:
                 # Save previous file if exists
                 if current_file and current_content:
@@ -483,8 +589,26 @@ def _parse_multiple_files(code: str) -> list:
     
     # If still no files found, treat entire code as single file
     if not files:
+        # Use appropriate extension based on language
+        ext_map = {
+            "python": "py",
+            "javascript": "js",
+            "react": "jsx",  # React uses JSX extension
+            "typescript": "ts",
+            "java": "java",
+            "cpp": "cpp",
+            "c": "c",
+            "csharp": "cs",
+            "go": "go",
+            "rust": "rs",
+            "ruby": "rb",
+            "php": "php",
+            "swift": "swift",
+            "kotlin": "kt",
+        }
+        ext = ext_map.get(language.lower(), "py")
         files = [{
-            "filename": "generated_code.py",
+            "filename": f"generated_code.{ext}",
             "content": code.strip()
         }]
     
@@ -496,9 +620,14 @@ def display_code(results: dict):
     st.subheader("💻 Generated Code")
     
     code = results.get("code", "")
+    requirements = results.get("requirements", {})
+    
+    # Get programming language from requirements
+    language = requirements.get("programming_language", "python").lower() if requirements else "python"
+    
     if code:
-        # Parse for multiple files
-        files = _parse_multiple_files(code)
+        # Parse for multiple files (pass language for default filename)
+        files = _parse_multiple_files(code, language)
         
         if len(files) > 1:
             # Multiple files detected - show each separately
@@ -508,17 +637,21 @@ def display_code(results: dict):
                 filename = file_info["filename"]
                 file_content = file_info["content"]
                 
+                # Determine language for syntax highlighting
+                code_language = _get_language_from_filename(filename)
+                mime_type = _get_mime_type_from_filename(filename)
+                
                 # Create a container for each file
                 with st.container():
                     st.markdown(f"#### 📄 File {idx}: `{filename}`")
-                    st.code(file_content, language="python")
+                    st.code(file_content, language=code_language)
                     
                     # Download button for each file
                     st.download_button(
                         label=f"📥 Download {filename}",
                         data=file_content,
                         file_name=filename,
-                        mime="text/x-python",
+                        mime=mime_type,
                         key=f"download_{filename}_{idx}"
                     )
                     
@@ -531,14 +664,18 @@ def display_code(results: dict):
             filename = file_info["filename"]
             file_content = file_info["content"]
             
-            st.code(file_content, language="python")
+            # Determine language for syntax highlighting
+            code_language = _get_language_from_filename(filename)
+            mime_type = _get_mime_type_from_filename(filename)
+            
+            st.code(file_content, language=code_language)
             
             # Download button for code
             st.download_button(
                 label=f"📥 Download {filename}",
                 data=file_content,
                 file_name=filename,
-                mime="text/x-python"
+                mime=mime_type
             )
     else:
         st.error("No code generated")

@@ -1,5 +1,5 @@
 """
-Coding Agent - Generates clean, modular Python code from requirements.
+Coding Agent - Generates clean, modular code from requirements in the specified programming language.
 """
 from typing import Dict, Any
 from autogen import ConversableAgent
@@ -10,32 +10,32 @@ logger = get_logger(__name__)
 
 
 class CodingAgent:
-    """Agent responsible for generating Python code from structured requirements."""
+    """Agent responsible for generating code from structured requirements in the specified programming language."""
     
     def __init__(self):
         """Initialize the Coding Agent."""
         self.agent = ConversableAgent(
             name="coder",
-            system_message="""You are an expert Python software engineer specializing in clean, modular, production-ready code.
+            system_message="""You are an expert software engineer specializing in clean, modular, production-ready code in multiple programming languages.
 
 PRIMARY MISSION:
-Convert refined/structured requirements into clean, modular, functional Python code that works correctly.
+Convert refined/structured requirements into clean, modular, functional code in the specified programming language that works correctly.
 
 CORE RESPONSIBILITIES:
-1. **Convert Refined Requirements**: Transform structured requirements into working Python code
-2. **Clean Code**: Write clean, readable, well-organized code
-3. **Modular Design**: Create modular code with proper separation of concerns
-4. **Functional Code**: Ensure code is functional, executable, and works as intended
-5. **Python Best Practices**: Strictly follow Python best practices
+1. **Convert Refined Requirements**: Transform structured requirements into working code in the specified language
+2. **Language-Specific Best Practices**: Follow best practices and conventions for the specified programming language
+3. **Clean Code**: Write clean, readable, well-organized code
+4. **Modular Design**: Create modular code with proper separation of concerns
+5. **Functional Code**: Ensure code is functional, executable, and works as intended
 
-PYTHON BEST PRACTICES (MANDATORY):
-- **PEP 8 Compliance**: Follow PEP 8 style guide (naming conventions, line length, spacing)
-- **Type Hints**: Include type hints for function parameters and return values
-- **Docstrings**: Add comprehensive docstrings (Google or NumPy style) to all functions and classes
-- **Code Organization**: Use proper module structure, imports, and organization
-- **Error Handling**: Implement proper exception handling with try/except blocks
+LANGUAGE-SPECIFIC BEST PRACTICES:
+- **Follow Language Conventions**: Use naming conventions, style guides, and best practices for the specified language
+- **Type Safety**: Include type hints/annotations where the language supports them
+- **Documentation**: Add comprehensive documentation (docstrings, comments, JSDoc, etc.) appropriate for the language
+- **Code Organization**: Use proper module/package structure, imports, and organization for the language
+- **Error Handling**: Implement proper exception/error handling appropriate for the language
 - **Input Validation**: Validate all inputs and handle edge cases
-- **Naming Conventions**: Use descriptive, Pythonic names (snake_case for functions/variables, PascalCase for classes)
+- **Naming Conventions**: Use descriptive names following the language's conventions (snake_case, camelCase, PascalCase, etc.)
 - **Code Comments**: Add inline comments where logic is complex
 - **DRY Principle**: Don't Repeat Yourself - avoid code duplication
 - **Single Responsibility**: Each function/class should have a single, clear purpose
@@ -57,18 +57,26 @@ CRITICAL RULES:
 - **EXECUTABLE CODE**: Code must be ready to run without modification
 
 MULTIPLE FILES:
-If the requirements involve multiple files (e.g., main.py, utils.py, config.py), format them clearly:
-- Start each file with: "# File: filename.py" on its own line
+If the requirements involve multiple files, format them clearly:
+- Start each file with: "# File: filename.ext" on its own line (use appropriate extension for the language)
 - Then provide the complete code for that file
 - Separate files with a blank line and the next file header
 - Example:
-  # File: main.py
+  # File: main.py (for Python)
   [code for main.py]
   
   # File: utils.py
   [code for utils.py]
 
-Output only the Python code, properly formatted and ready for execution.""",
+IMPORTANT:
+- Generate code in the programming language specified in the requirements
+- If no language is specified, default to Python
+- Use appropriate file extensions for the language (.py, .js, .jsx for React, .java, .cpp, .go, .rs, etc.)
+- Follow language-specific conventions and best practices
+- For React: Generate JSX code with functional components, hooks, and proper React imports
+- For JavaScript: Generate standard JavaScript code
+- DO NOT generate Python code when the language is React or JavaScript
+- Output only the code, properly formatted and ready for execution.""",
             llm_config={
                 "config_list": [{
                     "model": Config.MODEL,
@@ -83,28 +91,64 @@ Output only the Python code, properly formatted and ready for execution.""",
     
     def generate_code(self, requirements: Dict[str, Any], feedback: str = None, previous_code: str = None) -> str:
         """
-        Generate Python code from structured requirements.
+        Generate code from structured requirements in the specified programming language.
         
         Args:
-            requirements: Structured requirements dictionary
+            requirements: Structured requirements dictionary (should include 'programming_language' field)
             feedback: Optional feedback from code review agent
             previous_code: Optional previous code for follow-up prompts (to modify instead of generating from scratch)
             
         Returns:
-            Generated Python code as string
+            Generated code as string
         """
         req_text = self._format_requirements(requirements)
+        
+        # Get programming language from requirements (default to Python)
+        language = requirements.get("programming_language", "python").lower()
+        
+        # Handle special cases for language display
+        language_display_map = {
+            "react": "React (JavaScript/JSX)",
+            "javascript": "JavaScript",
+            "typescript": "TypeScript",
+            "cpp": "C++",
+            "csharp": "C#",
+            "python": "Python",
+        }
+        language_display = language_display_map.get(language, language.capitalize())
+        
+        logger.info(f"CodingAgent: Generating code in language: {language} (display: {language_display})")
         
         log_agent_activity(
             logger, 
             "CodingAgent", 
             "Generating code",
-            {"has_feedback": bool(feedback), "requirements_count": len(requirements.get("functional_requirements", []))}
+            {
+                "has_feedback": bool(feedback), 
+                "requirements_count": len(requirements.get("functional_requirements", [])),
+                "language": language,
+                "language_display": language_display
+            }
         )
+        
+        # Build React-specific instructions if needed
+        react_instructions = ""
+        if language == "react":
+            react_instructions = """
+REACT-SPECIFIC REQUIREMENTS:
+- Generate React components using JSX syntax
+- Use functional components with hooks (useState, useEffect, etc.)
+- Include proper imports: import React from 'react'
+- Use .jsx or .tsx file extensions
+- Follow React best practices and component structure
+- DO NOT generate Python code - generate React/JSX code only
+"""
         
         # Build prompt based on whether we have feedback, previous code, or neither
         if feedback:
-            prompt = f"""Convert the following refined requirements into clean, modular, functional Python code.
+            prompt = f"""Convert the following refined requirements into clean, modular, functional {language_display} code.
+
+PROGRAMMING LANGUAGE: {language_display}
 
 REQUIREMENTS:
 {req_text}
@@ -113,19 +157,24 @@ REVIEW FEEDBACK (address these issues):
 {feedback}
 
 TASK:
-Generate improved Python code that:
-1. Converts the refined requirements into working code
+Generate improved {language_display} code that:
+1. Converts the refined requirements into working code in {language_display}
 2. Addresses all issues mentioned in the review feedback
-3. Follows Python best practices (PEP 8, type hints, docstrings)
+3. Follows {language_display} best practices and conventions
 4. Is clean, modular, and functional
 5. Is complete and executable
-
+{react_instructions}
 CRITICAL: 
 - DO NOT review or critique the code - only implement it
 - Focus on code generation, not code review
-- Make the code work correctly based on requirements and feedback"""
+- Make the code work correctly based on requirements and feedback
+- Generate code in {language_display}, not Python
+- ONLY generate code in the specified language: {language_display}
+- NEVER generate Python code when the specified language is {language_display}"""
         elif previous_code:
             prompt = f"""Modify the following existing code based on the updated requirements.
+
+PROGRAMMING LANGUAGE: {language_display}
 
 PREVIOUS CODE:
 {previous_code}
@@ -138,41 +187,64 @@ Modify the existing code to:
 1. Incorporate the updated requirements while maintaining existing functionality
 2. Make necessary changes, additions, or modifications as specified
 3. Keep the code structure and style consistent with the previous code
-4. Follow Python best practices (PEP 8, type hints, docstrings)
+4. Follow {language_display} best practices and conventions
 5. Ensure the code is complete and executable
-
+{react_instructions}
 CRITICAL: 
 - Modify the existing code rather than rewriting from scratch
 - Maintain consistency with the previous code structure
 - Only change what is necessary based on the updated requirements
-- Keep all working functionality that isn't being modified"""
+- Keep all working functionality that isn't being modified
+- Maintain the same programming language ({language_display})
+- ONLY generate code in the specified language: {language_display}
+- NEVER generate Python code when the specified language is {language_display}"""
         else:
-            prompt = f"""Convert the following refined requirements into clean, modular, functional Python code.
+            # Build React-specific instructions if needed
+            react_instructions = ""
+            if language == "react":
+                react_instructions = """
+REACT-SPECIFIC REQUIREMENTS:
+- Generate React components using JSX syntax
+- Use functional components with hooks (useState, useEffect, etc.)
+- Include proper imports: import React from 'react'
+- Use .jsx or .tsx file extensions
+- Follow React best practices and component structure
+- DO NOT generate Python code - generate React/JSX code only
+"""
+            
+            prompt = f"""Convert the following refined requirements into clean, modular, functional {language_display} code.
+
+PROGRAMMING LANGUAGE: {language_display}
 
 REQUIREMENTS:
 {req_text}
 
 TASK:
-Generate Python code that:
+Generate {language_display} code that:
 1. Converts the refined requirements into working code
-2. Follows Python best practices (PEP 8, type hints, docstrings, proper error handling)
+2. Follows {language_display} best practices and conventions
 3. Is clean, modular, and well-organized
 4. Is functional and executable
 5. Is complete with no placeholders or TODOs
 
-PYTHON BEST PRACTICES TO FOLLOW:
-- PEP 8 style guide compliance
-- Type hints for all functions
-- Comprehensive docstrings
-- Proper error handling
-- Input validation
-- Modular design with separation of concerns
-- Meaningful variable and function names
-
+LANGUAGE-SPECIFIC BEST PRACTICES:
+- Follow the language's style guide and conventions
+- Use appropriate type annotations/hints if the language supports them
+- Add comprehensive documentation (docstrings, comments, JSDoc, etc.)
+- Implement proper error/exception handling for the language
+- Use appropriate naming conventions for the language
+- Follow modular design principles
+- Use meaningful variable and function names
+{react_instructions}
 CRITICAL: 
 - DO NOT review or critique the code - only implement it
 - Focus on code generation, not code review
-- Generate working, functional code"""
+- Generate working, functional code in {language_display}
+- Use appropriate file extensions for {language_display}
+- If language is React, generate React/JSX code, NOT Python code
+- If language is JavaScript, generate JavaScript code, NOT Python code
+- ONLY generate code in the specified language: {language_display}
+- NEVER generate Python code when the specified language is {language_display}"""
         
         log_api_call(logger, "CodingAgent", Config.MODEL, len(prompt))
         
